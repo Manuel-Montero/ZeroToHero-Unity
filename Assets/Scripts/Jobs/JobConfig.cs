@@ -3,16 +3,15 @@ using UnityEngine;
 
 namespace ZeroToHero.Jobs
 {
-    [Serializable]
+    [System.Serializable]
     public class JobConfig
     {
         public string id;
         public string jobTitle;
-        public int salary = 100;
-        public float durationInSeconds = 3f; // Длительность рабочего цикла (таймер)
-
-        // Требования (на будущее)
+        public int salary;
+        public float durationInSeconds;
+        
+        // ВАЖНО: ID образования, необходимого для этой работы (null или "" если не требуется)
         public string requiredEducationId;
-        public string requiredClothesId;
     }
 }

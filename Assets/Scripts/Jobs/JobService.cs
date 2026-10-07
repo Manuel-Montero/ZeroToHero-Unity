@@ -28,14 +28,51 @@ namespace ZeroToHero.Jobs
 
             InitDefaultJobs();
         }
-
+        
         private void InitDefaultJobs()
         {
-            var courier = new JobConfig { id = "job_courier", jobTitle = "Курьер", salary = 100, durationInSeconds = 2.5f };
-            var waiter = new JobConfig { id = "job_waiter", jobTitle = "Официант", salary = 350, durationInSeconds = 4.0f };
+                // Для Курьера образование не требуется
+            var courier = new JobConfig 
+            { 
+                id = "job_courier", 
+                jobTitle = "Курьер", 
+                salary = 100, 
+                durationInSeconds = 2.5f,
+                requiredEducationId = ""
+            };
+
+            // Для Официанта требуются "Курсы" (edu_courses)
+            var waiter = new JobConfig 
+            { 
+                id = "job_waiter", 
+                jobTitle = "Официант", 
+                salary = 350, 
+                durationInSeconds = 4.0f,
+                requiredEducationId = "edu_courses"
+            };
 
             AvailableJobs.Add(courier.id, courier);
             AvailableJobs.Add(waiter.id, waiter);
+        }
+
+        // Повышение с проверкой образования
+        public bool PromoteToJob(string newJobId, Education.EducationService educationService)
+        {
+            if (!AvailableJobs.TryGetValue(newJobId, out var job)) return false;
+
+            // Если для работы требуется образование, проверяем, пройдено ли оно
+            if (!string.IsNullOrEmpty(job.requiredEducationId))
+            {
+                if (educationService == null || !educationService.HasCompleted(job.requiredEducationId))
+                {
+                    Debug.Log($"[JobService] Для работы '{job.jobTitle}' необходимо сначала пройти обучение!");
+                    return false;
+                }
+            }
+
+            _player.currentJobId = newJobId;
+            Debug.Log($"[JobService] Успешное повышение! Новая должность: {job.jobTitle}");
+            return true;
         }
 
         public JobConfig GetCurrentJob()

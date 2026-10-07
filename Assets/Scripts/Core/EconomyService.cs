@@ -1,36 +1,41 @@
-using UnityEngine;
+using System;
 using ZeroToHero.Player;
 
 namespace ZeroToHero.Core
 {
     public class EconomyService
     {
-        private PlayerData _playerData;
+        private PlayerData _player;
 
-        public EconomyService(PlayerData playerData)
+        // Событие изменения баланса (передаем новый баланс и причину)
+        public event Action<int, string> OnBalanceChanged;
+
+        public EconomyService(PlayerData player)
         {
-            _playerData = playerData;
+            _player = player;
         }
 
-        public void AddMoney(int amount, string source)
+        public bool AddMoney(int amount, string reason = "")
         {
-            if (amount <= 0) return;
-            _playerData.money += amount;
-            Debug.Log($"[Economy] Earned +{amount} KZT from {source}. Total: {_playerData.money}");
-        }
+            if (amount <= 0) return false;
 
-        public bool SpendMoney(int amount, string category)
-        {
-            if (amount <= 0) return true;
-            if (_playerData.money < amount)
-            {
-                Debug.LogWarning($"[Economy] Not enough money for {category}. Needed: {amount}, Current: {_playerData.money}");
-                return false;
-            }
-
-            _playerData.money -= amount;
-            Debug.Log($"[Economy] Spent -{amount} KZT on {category}. Remaining: {_playerData.money}");
+            _player.money += amount;
+            OnBalanceChanged?.Invoke(_player.money, reason);
             return true;
+        }
+
+        public bool SpendMoney(int amount, string reason = "")
+        {
+            if (amount <= 0 || _player.money < amount) return false;
+
+            _player.money -= amount;
+            OnBalanceChanged?.Invoke(_player.money, reason);
+            return true;
+        }
+
+        public bool HasEnoughMoney(int amount)
+        {
+            return _player.money >= amount;
         }
     }
 }
