@@ -1,4 +1,5 @@
 using UnityEngine;
+using ZeroToHero.Business;
 using ZeroToHero.Education;
 using ZeroToHero.Jobs;
 using ZeroToHero.Player;
@@ -14,7 +15,8 @@ namespace ZeroToHero.Core
         public EconomyService Economy { get; private set; }
         public JobService Job { get; private set; }
         public EducationService Education { get; private set; }
-        public NeedsService Needs { get; private set; } // <--- Добавили
+        public NeedsService Needs { get; private set; }
+        public BusinessService Business { get; private set; } // <--- Добавили
         public SaveService SaveSystem { get; private set; }
 
         private MainUI _mainUI;
@@ -42,21 +44,23 @@ namespace ZeroToHero.Core
             Economy = new EconomyService(Player);
             Job = new JobService(Player, Economy);
             Education = new EducationService(Player, Economy);
-            Needs = new NeedsService(Player, Economy); // <--- Добавили
+            Needs = new NeedsService(Player, Economy);
+            Business = new BusinessService(Player, Economy); // <--- Добавили
 
-            // Автосохранение при изменениях
+            // Автосохранения
             Economy.OnBalanceChanged += (amount, reason) => SaveGame();
             Job.OnWorkCompleted += () => 
             {
-                Needs.ConsumeNeeds(5, 5); // Снимаем 5 HP и 5 Mood за каждую смену работы
+                Needs.ConsumeNeeds(5, 5);
                 SaveGame();
             };
             Education.OnStudyCompleted += (eduId) => 
             {
-                Needs.ConsumeNeeds(10, 10); // Снимаем 10 HP и 10 Mood за учебу
+                Needs.ConsumeNeeds(10, 10);
                 SaveGame();
             };
             Needs.OnNeedsChanged += SaveGame;
+            Business.OnBusinessUpdated += SaveGame; // <--- Сохранение бизнеса
         }
 
         private void Start()

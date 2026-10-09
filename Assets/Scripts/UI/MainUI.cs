@@ -25,8 +25,13 @@ namespace ZeroToHero.UI
         public Image studyProgressBar;
 
         [Header("Needs Panel")]
-        public Button healButton; // Кнопка "Лечиться" (+20 HP за 50 KZT)
-        public Button restButton; // Кнопка "Отдохнуть" (+20 Mood за 50 KZT)
+        public Button healButton;
+        public Button restButton;
+
+        [Header("Business Panel")]
+        public TMP_Text businessStatusText;  // Текст статуса бизнеса
+        public Button buyBusinessButton;     // Кнопка покупки "Купить Кофейню"
+        public Button collectIncomeButton;   // Кнопка "Собрать доход"
 
         private void Start()
         {
@@ -50,6 +55,11 @@ namespace ZeroToHero.UI
                 {
                     GameManager.Instance.Needs.OnNeedsChanged += UpdateUI;
                 }
+
+                if (GameManager.Instance.Business != null)
+                {
+                    GameManager.Instance.Business.OnBusinessUpdated += UpdateUI;
+                }
             }
 
             if (workButton != null) workButton.onClick.AddListener(OnWorkButtonClicked);
@@ -58,6 +68,9 @@ namespace ZeroToHero.UI
             
             if (healButton != null) healButton.onClick.AddListener(OnHealClicked);
             if (restButton != null) restButton.onClick.AddListener(OnRestClicked);
+
+            if (buyBusinessButton != null) buyBusinessButton.onClick.AddListener(OnBuyBusinessClicked);
+            if (collectIncomeButton != null) collectIncomeButton.onClick.AddListener(OnCollectIncomeClicked);
 
             UpdateUI();
         }
@@ -84,6 +97,11 @@ namespace ZeroToHero.UI
                 {
                     GameManager.Instance.Needs.OnNeedsChanged -= UpdateUI;
                 }
+
+                if (GameManager.Instance.Business != null)
+                {
+                    GameManager.Instance.Business.OnBusinessUpdated -= UpdateUI;
+                }
             }
         }
 
@@ -91,7 +109,7 @@ namespace ZeroToHero.UI
         {
             if (!GameManager.Instance.Needs.CanWork())
             {
-                Debug.Log("[MainUI] Слишком низкое здоровье или настроение! Полечитесь или отдохните.");
+                Debug.Log("[MainUI] Слишком низкое здоровье или настроение!");
                 return;
             }
             GameManager.Instance.Job.StartWork();
@@ -111,13 +129,25 @@ namespace ZeroToHero.UI
 
         private void OnHealClicked()
         {
-            GameManager.Instance.Needs.Heal(20, 50); // +20 HP за 50 KZT
+            GameManager.Instance.Needs.Heal(20, 50);
             UpdateUI();
         }
 
         private void OnRestClicked()
         {
-            GameManager.Instance.Needs.Rest(20, 50); // +20 Mood за 50 KZT
+            GameManager.Instance.Needs.Rest(20, 50);
+            UpdateUI();
+        }
+
+        private void OnBuyBusinessClicked()
+        {
+            GameManager.Instance.Business.BuyBusiness("biz_coffee");
+            UpdateUI();
+        }
+
+        private void OnCollectIncomeClicked()
+        {
+            GameManager.Instance.Business.CollectIncome("biz_coffee");
             UpdateUI();
         }
 
@@ -162,6 +192,7 @@ namespace ZeroToHero.UI
             var player = GameManager.Instance.Player;
             var currentJob = GameManager.Instance.Job.GetCurrentJob();
             var edu = GameManager.Instance.Education;
+            var biz = GameManager.Instance.Business;
 
             if (moneyText != null) moneyText.text = $"{player.money} KZT";
             if (healthText != null) healthText.text = $"Здоровье: {player.health}%";
@@ -176,6 +207,21 @@ namespace ZeroToHero.UI
                 studyTitleText.text = hasCourses 
                     ? "Курсы: Пройдено (500 KZT)" 
                     : "Курсы: Не пройдены (500 KZT)";
+            }
+
+            // Обновление панели бизнеса
+            if (biz != null)
+            {
+                var coffeeData = biz.GetBusinessData("biz_coffee");
+                if (businessStatusText != null)
+                {
+                    businessStatusText.text = coffeeData.isPurchased
+                        ? $"Кофейня: Куплена | Звёзды: {coffeeData.stars}/3 | Сборов: {coffeeData.collectCount}"
+                        : "Кофейня: Не куплена (1000 KZT)";
+                }
+
+                if (buyBusinessButton != null) buyBusinessButton.interactable = !coffeeData.isPurchased;
+                if (collectIncomeButton != null) collectIncomeButton.interactable = coffeeData.isPurchased;
             }
         }
     }
