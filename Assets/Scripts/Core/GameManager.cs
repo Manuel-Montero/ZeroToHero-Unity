@@ -20,7 +20,8 @@ namespace ZeroToHero.Core
         public NeedsService Needs { get; private set; }
         public BusinessService Business { get; private set; }
         public BankService Bank { get; private set; }
-        public AssetService Assets { get; private set; } // <--- Добавили
+        public AssetService Assets { get; private set; }
+        public TimeManager TimeSystem { get; private set; } // <--- Добавили
         public SaveService SaveSystem { get; private set; }
 
         private MainUI _mainUI;
@@ -50,7 +51,8 @@ namespace ZeroToHero.Core
             Needs = new NeedsService(Player, Economy);
             Business = new BusinessService(Player, Economy);
             Bank = new BankService(Player, Economy);
-            Assets = new AssetService(Player, Economy); // <--- Добавили
+            Assets = new AssetService(Player, Economy);
+            TimeSystem = new TimeManager(Player, Economy, Assets); // <--- Добавили
 
             // Автосохранения
             Economy.OnBalanceChanged += (amount, reason) => SaveGame();
@@ -67,7 +69,8 @@ namespace ZeroToHero.Core
             Needs.OnNeedsChanged += SaveGame;
             Business.OnBusinessUpdated += SaveGame;
             Bank.OnBankUpdated += SaveGame;
-            Assets.OnAssetsUpdated += SaveGame; // <--- Сохранение имущества
+            Assets.OnAssetsUpdated += SaveGame;
+            TimeSystem.OnDayPassed += SaveGame; // <--- Сохранение при смене дня
         }
 
         private void Start()
@@ -84,6 +87,7 @@ namespace ZeroToHero.Core
             if (Job != null) Job.UpdateTimer(Time.deltaTime);
             if (Education != null) Education.UpdateTimer(Time.deltaTime);
             if (Bank != null) Bank.UpdateTimer(Time.deltaTime);
+            if (TimeSystem != null) TimeSystem.UpdateTimer(Time.deltaTime); // <--- Обновление календаря
         }
 
         public void SaveGame()

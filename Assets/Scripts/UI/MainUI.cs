@@ -11,6 +11,7 @@ namespace ZeroToHero.UI
         public TMP_Text moneyText;
         public TMP_Text healthText;
         public TMP_Text moodText;
+        public TMP_Text dateText; // <--- Добавляем текст для отображения дня и месяца
 
         [Header("Job Panel")]
         public TMP_Text jobTitleText;
@@ -80,6 +81,11 @@ namespace ZeroToHero.UI
                 if (GameManager.Instance.Assets != null)
                 {
                     GameManager.Instance.Assets.OnAssetsUpdated += UpdateUI;
+                }
+
+                if (GameManager.Instance.TimeSystem != null)
+                {
+                    GameManager.Instance.TimeSystem.OnDayPassed += UpdateUI;
                 }
             }
 
@@ -268,6 +274,8 @@ namespace ZeroToHero.UI
             if (moneyText != null) moneyText.text = $"{player.money} KZT";
             if (healthText != null) healthText.text = $"Здоровье: {player.health}%";
             if (moodText != null) moodText.text = $"Настроение: {player.mood}%";
+
+            if (dateText != null) dateText.text = $"Месяц {player.month}, День {player.day}";
 
             if (jobTitleText != null) jobTitleText.text = $"Работа: {currentJob.jobTitle}";
             if (salaryText != null) salaryText.text = $"Зарплата: {currentJob.salary} KZT";
