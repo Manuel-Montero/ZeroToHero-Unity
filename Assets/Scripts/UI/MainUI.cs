@@ -34,9 +34,15 @@ namespace ZeroToHero.UI
         public Button collectIncomeButton;
 
         [Header("Bank Panel")]
-        public TMP_Text bankStatusText;    // Текст статуса вклада
-        public Button openDepositButton;   // Кнопка "Открыть вклад (300 KZT)"
-        public Button claimDepositButton;  // Кнопка "Забрать вклад с процентами"
+        public TMP_Text bankStatusText;
+        public Button openDepositButton;
+        public Button claimDepositButton;
+
+        [Header("Assets Panel")]
+        public TMP_Text houseStatusText;   // Статус жилья
+        public Button buyHouseButton;      // Кнопка покупки жилья (Койко-место / Квартира)
+        public TMP_Text carStatusText;     // Статус авто
+        public Button buyCarButton;        // Кнопка покупки транспорта (Велосипед / Седан)
 
         private void Start()
         {
@@ -70,6 +76,11 @@ namespace ZeroToHero.UI
                 {
                     GameManager.Instance.Bank.OnBankUpdated += UpdateUI;
                 }
+
+                if (GameManager.Instance.Assets != null)
+                {
+                    GameManager.Instance.Assets.OnAssetsUpdated += UpdateUI;
+                }
             }
 
             if (workButton != null) workButton.onClick.AddListener(OnWorkButtonClicked);
@@ -84,6 +95,9 @@ namespace ZeroToHero.UI
 
             if (openDepositButton != null) openDepositButton.onClick.AddListener(OnOpenDepositClicked);
             if (claimDepositButton != null) claimDepositButton.onClick.AddListener(OnClaimDepositClicked);
+
+            if (buyHouseButton != null) buyHouseButton.onClick.AddListener(OnBuyHouseClicked);
+            if (buyCarButton != null) buyCarButton.onClick.AddListener(OnBuyCarClicked);
 
             UpdateUI();
         }
@@ -120,12 +134,16 @@ namespace ZeroToHero.UI
                 {
                     GameManager.Instance.Bank.OnBankUpdated -= UpdateUI;
                 }
+
+                if (GameManager.Instance.Assets != null)
+                {
+                    GameManager.Instance.Assets.OnAssetsUpdated -= UpdateUI;
+                }
             }
         }
 
         private void Update()
         {
-            // Обновляем UI банка на каждой камере, если вклад активен (чтобы видеть тикающий таймер)
             if (GameManager.Instance != null && GameManager.Instance.Bank != null)
             {
                 var depData = GameManager.Instance.Bank.GetDepositData("dep_quick");
@@ -180,7 +198,6 @@ namespace ZeroToHero.UI
 
         private void OnOpenDepositClicked()
         {
-            // Вкладываем 300 KZT под +10% на 2 минуты (120 секунд)
             GameManager.Instance.Bank.OpenDeposit("dep_quick", 300);
             UpdateUI();
         }
@@ -188,6 +205,18 @@ namespace ZeroToHero.UI
         private void OnClaimDepositClicked()
         {
             GameManager.Instance.Bank.ClaimDeposit("dep_quick");
+            UpdateUI();
+        }
+
+        private void OnBuyHouseClicked()
+        {
+            GameManager.Instance.Assets.BuyAsset("house_hostel");
+            UpdateUI();
+        }
+
+        private void OnBuyCarClicked()
+        {
+            GameManager.Instance.Assets.BuyAsset("car_bicycle");
             UpdateUI();
         }
 
@@ -234,6 +263,7 @@ namespace ZeroToHero.UI
             var edu = GameManager.Instance.Education;
             var biz = GameManager.Instance.Business;
             var bank = GameManager.Instance.Bank;
+            var assets = GameManager.Instance.Assets;
 
             if (moneyText != null) moneyText.text = $"{player.money} KZT";
             if (healthText != null) healthText.text = $"Здоровье: {player.health}%";
@@ -241,6 +271,7 @@ namespace ZeroToHero.UI
 
             if (jobTitleText != null) jobTitleText.text = $"Работа: {currentJob.jobTitle}";
             if (salaryText != null) salaryText.text = $"Зарплата: {currentJob.salary} KZT";
+
             if (studyTitleText != null)
             {
                 bool hasCourses = edu.HasCompleted("edu_courses");
@@ -260,7 +291,6 @@ namespace ZeroToHero.UI
                 if (collectIncomeButton != null) collectIncomeButton.interactable = coffeeData.isPurchased;
             }
 
-            // Обновление статуса банка
             if (bank != null)
             {
                 var depData = bank.GetDepositData("dep_quick");
@@ -283,6 +313,24 @@ namespace ZeroToHero.UI
 
                 if (openDepositButton != null) openDepositButton.interactable = !depData.isActive && !depData.isReadyToClaim;
                 if (claimDepositButton != null) claimDepositButton.interactable = depData.isReadyToClaim;
+            }
+
+            // Обновление UI Имущества
+            if (assets != null)
+            {
+                bool hasHostel = assets.HasAsset("house_hostel");
+                if (houseStatusText != null)
+                {
+                    houseStatusText.text = hasHostel ? "Жильё: Койко-место" : "Жильё: Нет";
+                }
+                if (buyHouseButton != null) buyHouseButton.interactable = !hasHostel;
+
+                bool hasBicycle = assets.HasAsset("car_bicycle");
+                if (carStatusText != null)
+                {
+                    carStatusText.text = hasBicycle ? "Транспорт: Велосипед" : "Транспорт: Нет";
+                }
+                if (buyCarButton != null) buyCarButton.interactable = !hasBicycle;
             }
         }
     }

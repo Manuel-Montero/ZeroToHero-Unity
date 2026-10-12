@@ -1,4 +1,5 @@
 using UnityEngine;
+using ZeroToHero.Assets;
 using ZeroToHero.Bank;
 using ZeroToHero.Business;
 using ZeroToHero.Education;
@@ -18,7 +19,8 @@ namespace ZeroToHero.Core
         public EducationService Education { get; private set; }
         public NeedsService Needs { get; private set; }
         public BusinessService Business { get; private set; }
-        public BankService Bank { get; private set; } // <--- Добавили
+        public BankService Bank { get; private set; }
+        public AssetService Assets { get; private set; } // <--- Добавили
         public SaveService SaveSystem { get; private set; }
 
         private MainUI _mainUI;
@@ -47,7 +49,8 @@ namespace ZeroToHero.Core
             Education = new EducationService(Player, Economy);
             Needs = new NeedsService(Player, Economy);
             Business = new BusinessService(Player, Economy);
-            Bank = new BankService(Player, Economy); // <--- Добавили
+            Bank = new BankService(Player, Economy);
+            Assets = new AssetService(Player, Economy); // <--- Добавили
 
             // Автосохранения
             Economy.OnBalanceChanged += (amount, reason) => SaveGame();
@@ -63,7 +66,8 @@ namespace ZeroToHero.Core
             };
             Needs.OnNeedsChanged += SaveGame;
             Business.OnBusinessUpdated += SaveGame;
-            Bank.OnBankUpdated += SaveGame; // <--- Сохранение банка
+            Bank.OnBankUpdated += SaveGame;
+            Assets.OnAssetsUpdated += SaveGame; // <--- Сохранение имущества
         }
 
         private void Start()
@@ -79,7 +83,7 @@ namespace ZeroToHero.Core
         {
             if (Job != null) Job.UpdateTimer(Time.deltaTime);
             if (Education != null) Education.UpdateTimer(Time.deltaTime);
-            if (Bank != null) Bank.UpdateTimer(Time.deltaTime); // <--- Таймер депозитов
+            if (Bank != null) Bank.UpdateTimer(Time.deltaTime);
         }
 
         public void SaveGame()

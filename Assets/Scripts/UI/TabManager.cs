@@ -10,14 +10,16 @@ namespace ZeroToHero.UI
         public GameObject educationPanel;
         public GameObject businessPanel;
         public GameObject needsPanel;
-        public GameObject bankPanel; // <--- Добавили панель банка
+        public GameObject bankPanel;
+        public GameObject assetsPanel; // <--- Панель имущества
 
         [Header("Navigation Buttons")]
         public Button jobTabButton;
         public Button educationTabButton;
         public Button businessTabButton;
         public Button needsTabButton;
-        public Button bankTabButton; // <--- Добавили кнопку вкладки банка
+        public Button bankTabButton;
+        public Button assetsTabButton; // <--- Кнопка имущества
 
         private void Start()
         {
@@ -25,7 +27,8 @@ namespace ZeroToHero.UI
             if (educationTabButton != null) educationTabButton.onClick.AddListener(() => ShowTab(educationPanel));
             if (businessTabButton != null) businessTabButton.onClick.AddListener(() => ShowTab(businessPanel));
             if (needsTabButton != null) needsTabButton.onClick.AddListener(() => ShowTab(needsPanel));
-            if (bankTabButton != null) bankTabButton.onClick.AddListener(() => ShowTab(bankPanel)); // <--- Листенер
+            if (bankTabButton != null) bankTabButton.onClick.AddListener(() => ShowTab(bankPanel));
+            if (assetsTabButton != null) assetsTabButton.onClick.AddListener(() => ShowTab(assetsPanel));
 
             ShowTab(jobPanel);
         }
@@ -36,7 +39,8 @@ namespace ZeroToHero.UI
             if (educationPanel != null) educationPanel.SetActive(false);
             if (businessPanel != null) businessPanel.SetActive(false);
             if (needsPanel != null) needsPanel.SetActive(false);
-            if (bankPanel != null) bankPanel.SetActive(false); // <--- Выключаем банк
+            if (bankPanel != null) bankPanel.SetActive(false);
+            if (assetsPanel != null) assetsPanel.SetActive(false);
 
             if (panelToShow != null)
             {
