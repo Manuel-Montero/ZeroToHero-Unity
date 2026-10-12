@@ -29,9 +29,14 @@ namespace ZeroToHero.UI
         public Button restButton;
 
         [Header("Business Panel")]
-        public TMP_Text businessStatusText;  // Текст статуса бизнеса
-        public Button buyBusinessButton;     // Кнопка покупки "Купить Кофейню"
-        public Button collectIncomeButton;   // Кнопка "Собрать доход"
+        public TMP_Text businessStatusText;
+        public Button buyBusinessButton;
+        public Button collectIncomeButton;
+
+        [Header("Bank Panel")]
+        public TMP_Text bankStatusText;    // Текст статуса вклада
+        public Button openDepositButton;   // Кнопка "Открыть вклад (300 KZT)"
+        public Button claimDepositButton;  // Кнопка "Забрать вклад с процентами"
 
         private void Start()
         {
@@ -60,6 +65,11 @@ namespace ZeroToHero.UI
                 {
                     GameManager.Instance.Business.OnBusinessUpdated += UpdateUI;
                 }
+
+                if (GameManager.Instance.Bank != null)
+                {
+                    GameManager.Instance.Bank.OnBankUpdated += UpdateUI;
+                }
             }
 
             if (workButton != null) workButton.onClick.AddListener(OnWorkButtonClicked);
@@ -71,6 +81,9 @@ namespace ZeroToHero.UI
 
             if (buyBusinessButton != null) buyBusinessButton.onClick.AddListener(OnBuyBusinessClicked);
             if (collectIncomeButton != null) collectIncomeButton.onClick.AddListener(OnCollectIncomeClicked);
+
+            if (openDepositButton != null) openDepositButton.onClick.AddListener(OnOpenDepositClicked);
+            if (claimDepositButton != null) claimDepositButton.onClick.AddListener(OnClaimDepositClicked);
 
             UpdateUI();
         }
@@ -102,16 +115,30 @@ namespace ZeroToHero.UI
                 {
                     GameManager.Instance.Business.OnBusinessUpdated -= UpdateUI;
                 }
+
+                if (GameManager.Instance.Bank != null)
+                {
+                    GameManager.Instance.Bank.OnBankUpdated -= UpdateUI;
+                }
+            }
+        }
+
+        private void Update()
+        {
+            // Обновляем UI банка на каждой камере, если вклад активен (чтобы видеть тикающий таймер)
+            if (GameManager.Instance != null && GameManager.Instance.Bank != null)
+            {
+                var depData = GameManager.Instance.Bank.GetDepositData("dep_quick");
+                if (depData.isActive)
+                {
+                    UpdateUI();
+                }
             }
         }
 
         private void OnWorkButtonClicked()
         {
-            if (!GameManager.Instance.Needs.CanWork())
-            {
-                Debug.Log("[MainUI] Слишком низкое здоровье или настроение!");
-                return;
-            }
+            if (!GameManager.Instance.Needs.CanWork()) return;
             GameManager.Instance.Job.StartWork();
         }
 
@@ -148,6 +175,19 @@ namespace ZeroToHero.UI
         private void OnCollectIncomeClicked()
         {
             GameManager.Instance.Business.CollectIncome("biz_coffee");
+            UpdateUI();
+        }
+
+        private void OnOpenDepositClicked()
+        {
+            // Вкладываем 300 KZT под +10% на 2 минуты (120 секунд)
+            GameManager.Instance.Bank.OpenDeposit("dep_quick", 300);
+            UpdateUI();
+        }
+
+        private void OnClaimDepositClicked()
+        {
+            GameManager.Instance.Bank.ClaimDeposit("dep_quick");
             UpdateUI();
         }
 
@@ -193,6 +233,7 @@ namespace ZeroToHero.UI
             var currentJob = GameManager.Instance.Job.GetCurrentJob();
             var edu = GameManager.Instance.Education;
             var biz = GameManager.Instance.Business;
+            var bank = GameManager.Instance.Bank;
 
             if (moneyText != null) moneyText.text = $"{player.money} KZT";
             if (healthText != null) healthText.text = $"Здоровье: {player.health}%";
@@ -200,28 +241,48 @@ namespace ZeroToHero.UI
 
             if (jobTitleText != null) jobTitleText.text = $"Работа: {currentJob.jobTitle}";
             if (salaryText != null) salaryText.text = $"Зарплата: {currentJob.salary} KZT";
-
             if (studyTitleText != null)
             {
                 bool hasCourses = edu.HasCompleted("edu_courses");
-                studyTitleText.text = hasCourses 
-                    ? "Курсы: Пройдено (500 KZT)" 
-                    : "Курсы: Не пройдены (500 KZT)";
+                studyTitleText.text = hasCourses ? "Курсы: Пройдено (500 KZT)" : "Курсы: Не пройдены (500 KZT)";
             }
 
-            // Обновление панели бизнеса
             if (biz != null)
             {
                 var coffeeData = biz.GetBusinessData("biz_coffee");
                 if (businessStatusText != null)
                 {
                     businessStatusText.text = coffeeData.isPurchased
-                        ? $"Кофейня: Куплена | Звёзды: {coffeeData.stars}/3 | Сборов: {coffeeData.collectCount}"
+                        ? $"Кофейня: Куплена | Звёзды: {coffeeData.stars}/3"
                         : "Кофейня: Не куплена (1000 KZT)";
                 }
-
                 if (buyBusinessButton != null) buyBusinessButton.interactable = !coffeeData.isPurchased;
                 if (collectIncomeButton != null) collectIncomeButton.interactable = coffeeData.isPurchased;
+            }
+
+            // Обновление статуса банка
+            if (bank != null)
+            {
+                var depData = bank.GetDepositData("dep_quick");
+                if (bankStatusText != null)
+                {
+                    if (depData.isReadyToClaim)
+                    {
+                        bankStatusText.text = "Вклад готов! Можно забрать с процентами (+10%)";
+                    }
+                    else if (depData.isActive)
+                    {
+                        int secondsLeft = Mathf.CeilToInt(depData.timer);
+                        bankStatusText.text = $"Вклад активен: осталось {secondsLeft} сек.";
+                    }
+                    else
+                    {
+                        bankStatusText.text = "Быстрый вклад: 300 KZT ➔ +10% за 2 мин.";
+                    }
+                }
+
+                if (openDepositButton != null) openDepositButton.interactable = !depData.isActive && !depData.isReadyToClaim;
+                if (claimDepositButton != null) claimDepositButton.interactable = depData.isReadyToClaim;
             }
         }
     }

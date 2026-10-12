@@ -1,4 +1,5 @@
 using UnityEngine;
+using ZeroToHero.Bank;
 using ZeroToHero.Business;
 using ZeroToHero.Education;
 using ZeroToHero.Jobs;
@@ -16,7 +17,8 @@ namespace ZeroToHero.Core
         public JobService Job { get; private set; }
         public EducationService Education { get; private set; }
         public NeedsService Needs { get; private set; }
-        public BusinessService Business { get; private set; } // <--- Добавили
+        public BusinessService Business { get; private set; }
+        public BankService Bank { get; private set; } // <--- Добавили
         public SaveService SaveSystem { get; private set; }
 
         private MainUI _mainUI;
@@ -38,14 +40,14 @@ namespace ZeroToHero.Core
         private void InitServices()
         {
             SaveSystem = new SaveService();
-            
             Player = SaveSystem.Load();
 
             Economy = new EconomyService(Player);
             Job = new JobService(Player, Economy);
             Education = new EducationService(Player, Economy);
             Needs = new NeedsService(Player, Economy);
-            Business = new BusinessService(Player, Economy); // <--- Добавили
+            Business = new BusinessService(Player, Economy);
+            Bank = new BankService(Player, Economy); // <--- Добавили
 
             // Автосохранения
             Economy.OnBalanceChanged += (amount, reason) => SaveGame();
@@ -60,7 +62,8 @@ namespace ZeroToHero.Core
                 SaveGame();
             };
             Needs.OnNeedsChanged += SaveGame;
-            Business.OnBusinessUpdated += SaveGame; // <--- Сохранение бизнеса
+            Business.OnBusinessUpdated += SaveGame;
+            Bank.OnBankUpdated += SaveGame; // <--- Сохранение банка
         }
 
         private void Start()
@@ -76,6 +79,7 @@ namespace ZeroToHero.Core
         {
             if (Job != null) Job.UpdateTimer(Time.deltaTime);
             if (Education != null) Education.UpdateTimer(Time.deltaTime);
+            if (Bank != null) Bank.UpdateTimer(Time.deltaTime); // <--- Таймер депозитов
         }
 
         public void SaveGame()
