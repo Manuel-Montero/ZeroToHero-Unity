@@ -1,5 +1,4 @@
-using System;
-using UnityEngine;
+using System.Collections.Generic;
 
 namespace ZeroToHero.Jobs
 {
@@ -9,9 +8,12 @@ namespace ZeroToHero.Jobs
         public string id;
         public string jobTitle;
         public int salary;
-        public float durationInSeconds;
-        
-        // ВАЖНО: ID образования, необходимого для этой работы (null или "" если не требуется)
-        public string requiredEducationId;
+        public float workDurationInSeconds; // Время смены в секундах
+
+        // Требования для получения работы
+        public string requiredEducationId; // Требуемое образование
+        public string requiredHouseId;     // Требуемое жилье
+        public string requiredCarId;       // Требуемый транспорт
+        public string requiredClothingId;  // Требуемая одежда
     }
 }

@@ -19,6 +19,7 @@ namespace ZeroToHero.UI
         public Button workButton;
         public Image workProgressBar;
         public Button promoteWaiterButton;
+        public Button promoteManagerButton;
 
         [Header("Education Panel")]
         public TMP_Text studyTitleText;
@@ -44,6 +45,9 @@ namespace ZeroToHero.UI
         public Button buyHouseButton;      // Кнопка покупки жилья (Койко-место / Квартира)
         public TMP_Text carStatusText;     // Статус авто
         public Button buyCarButton;        // Кнопка покупки транспорта (Велосипед / Седан)
+        public TMP_Text clothingStatusText; // <--- Статус одежды
+        public Button buyCasualClothingButton; // <--- Кнопка покупки "Повседневная одежда" (100 KZT)
+        public Button buySuitClothingButton;   // <--- Кнопка покупки "Деловой костюм" (1200 KZT)
 
         private void Start()
         {
@@ -104,6 +108,10 @@ namespace ZeroToHero.UI
 
             if (buyHouseButton != null) buyHouseButton.onClick.AddListener(OnBuyHouseClicked);
             if (buyCarButton != null) buyCarButton.onClick.AddListener(OnBuyCarClicked);
+
+            if (promoteManagerButton != null) promoteManagerButton.onClick.AddListener(OnPromoteManagerClicked);
+            if (buyCasualClothingButton != null) buyCasualClothingButton.onClick.AddListener(() => BuyClothing("wear_casual"));
+            if (buySuitClothingButton != null) buySuitClothingButton.onClick.AddListener(() => BuyClothing("wear_suit"));
 
             UpdateUI();
         }
@@ -174,7 +182,23 @@ namespace ZeroToHero.UI
 
         private void OnPromoteWaiterClicked()
         {
-            GameManager.Instance.Job.PromoteToJob("job_waiter", GameManager.Instance.Education);
+            GameManager.Instance.Job.PromoteToJob("job_waiter", GameManager.Instance.Education, GameManager.Instance.Assets);
+            UpdateUI();
+        }
+
+        private void OnPromoteManagerClicked()
+        {
+            GameManager.Instance.Job.PromoteToJob(
+                "job_manager", 
+                GameManager.Instance.Education, 
+                GameManager.Instance.Assets
+            );
+            UpdateUI();
+        }
+
+        private void BuyClothing(string clothingId)
+        {
+            GameManager.Instance.Assets.BuyAsset(clothingId);
             UpdateUI();
         }
 
@@ -327,18 +351,26 @@ namespace ZeroToHero.UI
             if (assets != null)
             {
                 bool hasHostel = assets.HasAsset("house_hostel");
-                if (houseStatusText != null)
-                {
-                    houseStatusText.text = hasHostel ? "Жильё: Койко-место" : "Жильё: Нет";
-                }
+                if (houseStatusText != null) houseStatusText.text = hasHostel ? "Жильё: Койко-место" : "Жильё: Нет";
                 if (buyHouseButton != null) buyHouseButton.interactable = !hasHostel;
 
                 bool hasBicycle = assets.HasAsset("car_bicycle");
-                if (carStatusText != null)
-                {
-                    carStatusText.text = hasBicycle ? "Транспорт: Велосипед" : "Транспорт: Нет";
-                }
+                if (carStatusText != null) carStatusText.text = hasBicycle ? "Транспорт: Велосипед" : "Транспорт: Нет";
                 if (buyCarButton != null) buyCarButton.interactable = !hasBicycle;
+
+                // Статус одежды
+                bool hasCasual = assets.HasAsset("wear_casual");
+                bool hasSuit = assets.HasAsset("wear_suit");
+
+                if (clothingStatusText != null)
+                {
+                    if (hasSuit) clothingStatusText.text = "Одежда: Деловой костюм";
+                    else if (hasCasual) clothingStatusText.text = "Одежда: Повседневная";
+                    else clothingStatusText.text = "Одежда: Старая футболка";
+                }
+
+                if (buyCasualClothingButton != null) buyCasualClothingButton.interactable = !hasCasual;
+                if (buySuitClothingButton != null) buySuitClothingButton.interactable = !hasSuit;
             }
         }
     }

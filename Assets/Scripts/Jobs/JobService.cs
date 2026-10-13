@@ -1,25 +1,27 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using ZeroToHero.Core;
+using ZeroToHero.Assets;
+using ZeroToHero.Education;
 using ZeroToHero.Player;
+using ZeroToHero.Core;
 
 namespace ZeroToHero.Jobs
 {
     public class JobService
     {
-        private EconomyService _economy;
         private PlayerData _player;
+        private EconomyService _economy;
 
-        public Dictionary<string, JobConfig> AvailableJobs { get; private set; } = new Dictionary<string, JobConfig>();
-        
-        public bool IsWorking { get; private set; }
-        public float CurrentTimer { get; private set; }
-        public float CurrentJobDuration { get; private set; }
+        public Dictionary<string, JobConfig> JobsConfig { get; private set; } 
+            = new Dictionary<string, JobConfig>();
+
+        private float _currentWorkTimer = 0f;
+        private bool _isWorking = false;
 
         public event Action OnWorkStarted;
-        public event Action OnWorkCompleted;
         public event Action<float> OnTimerTick;
+        public event Action OnWorkCompleted;
 
         public JobService(PlayerData player, EconomyService economy)
         {
@@ -28,101 +30,135 @@ namespace ZeroToHero.Jobs
 
             InitDefaultJobs();
         }
-        
+
         private void InitDefaultJobs()
         {
-                // Для Курьера образование не требуется
-            var courier = new JobConfig 
-            { 
-                id = "job_courier", 
-                jobTitle = "Курьер", 
-                salary = 100, 
-                durationInSeconds = 2.5f,
-                requiredEducationId = ""
-            };
-
-            // Для Официанта требуются "Курсы" (edu_courses)
-            var waiter = new JobConfig 
-            { 
-                id = "job_waiter", 
-                jobTitle = "Официант", 
-                salary = 350, 
-                durationInSeconds = 4.0f,
-                requiredEducationId = "edu_courses"
-            };
-
-            AvailableJobs.Add(courier.id, courier);
-            AvailableJobs.Add(waiter.id, waiter);
-        }
-
-        // Повышение с проверкой образования
-        public bool PromoteToJob(string newJobId, Education.EducationService educationService)
-        {
-            if (!AvailableJobs.TryGetValue(newJobId, out var job)) return false;
-
-            // Если для работы требуется образование, проверяем, пройдено ли оно
-            if (!string.IsNullOrEmpty(job.requiredEducationId))
+            var courier = new JobConfig
             {
-                if (educationService == null || !educationService.HasCompleted(job.requiredEducationId))
-                {
-                    Debug.Log($"[JobService] Для работы '{job.jobTitle}' необходимо сначала пройти обучение!");
-                    return false;
-                }
-            }
+                id = "job_courier",
+                jobTitle = "Курьер",
+                salary = 100,
+                workDurationInSeconds = 3f,
+                requiredEducationId = null,
+                requiredHouseId = null,
+                requiredCarId = null,
+                requiredClothingId = null
+            };
 
-            _player.currentJobId = newJobId;
-            Debug.Log($"[JobService] Успешное повышение! Новая должность: {job.jobTitle}");
-            return true;
+            var waiter = new JobConfig
+            {
+                id = "job_waiter",
+                jobTitle = "Официант",
+                salary = 250,
+                workDurationInSeconds = 5f,
+                requiredEducationId = "edu_courses",
+                requiredHouseId = null,
+                requiredCarId = null,
+                requiredClothingId = "wear_casual" // Нужно купить «Повседневную одежду»
+            };
+
+            var manager = new JobConfig
+            {
+                id = "job_manager",
+                jobTitle = "Младший Менеджер",
+                salary = 600,
+                workDurationInSeconds = 7f,
+                requiredEducationId = "edu_courses",
+                requiredHouseId = "house_hostel",
+                requiredCarId = "car_bicycle",
+                requiredClothingId = "wear_suit"   // Нужен «Деловой костюм»
+            };
+
+            JobsConfig.Add(courier.id, courier);
+            JobsConfig.Add(waiter.id, waiter);
+            JobsConfig.Add(manager.id, manager);
         }
 
         public JobConfig GetCurrentJob()
         {
-            if (AvailableJobs.TryGetValue(_player.currentJobId, out var job))
+            if (JobsConfig.TryGetValue(_player.currentJobId, out var job))
+            {
                 return job;
+            }
+            return JobsConfig["job_courier"];
+        }
 
-            return AvailableJobs["job_courier"];
+        // Проверка выполнения ВСЕХ условий для найма
+        public bool CanPromoteTo(string jobId, EducationService eduService, AssetService assetService)
+        {
+            if (!JobsConfig.TryGetValue(jobId, out var targetJob)) return false;
+
+            // 1. Образование
+            if (!string.IsNullOrEmpty(targetJob.requiredEducationId))
+            {
+                if (eduService == null || !eduService.HasCompleted(targetJob.requiredEducationId)) 
+                    return false;
+            }
+
+            // 2. Жилье
+            if (!string.IsNullOrEmpty(targetJob.requiredHouseId))
+            {
+                if (assetService == null || !assetService.HasAsset(targetJob.requiredHouseId)) 
+                    return false;
+            }
+
+            // 3. Транспорт
+            if (!string.IsNullOrEmpty(targetJob.requiredCarId))
+            {
+                if (assetService == null || !assetService.HasAsset(targetJob.requiredCarId)) 
+                    return false;
+            }
+
+            // 4. Одежда
+            if (!string.IsNullOrEmpty(targetJob.requiredClothingId))
+            {
+                if (assetService == null || !assetService.HasAsset(targetJob.requiredClothingId)) 
+                    return false;
+            }
+
+            return true;
+        }
+
+        public bool PromoteToJob(string jobId, EducationService eduService, AssetService assetService)
+        {
+            if (CanPromoteTo(jobId, eduService, assetService))
+            {
+                _player.currentJobId = jobId;
+                Debug.Log($"[JobService] Поздравляем! Вы устроились на должность: {JobsConfig[jobId].jobTitle}");
+                return true;
+            }
+
+            Debug.Log("[JobService] Не выполнены все условия для повышения!");
+            return false;
         }
 
         public void StartWork()
         {
-            if (IsWorking) return;
+            if (_isWorking) return;
 
-            JobConfig current = GetCurrentJob();
-            IsWorking = true;
-            CurrentTimer = 0f;
-            CurrentJobDuration = current.durationInSeconds;
+            var job = GetCurrentJob();
+            _isWorking = true;
+            _currentWorkTimer = job.workDurationInSeconds;
 
             OnWorkStarted?.Invoke();
         }
 
         public void UpdateTimer(float deltaTime)
         {
-            if (!IsWorking) return;
+            if (!_isWorking) return;
 
-            CurrentTimer += deltaTime;
-            float progress = Mathf.Clamp01(CurrentTimer / CurrentJobDuration);
+            _currentWorkTimer -= deltaTime;
+            var job = GetCurrentJob();
+
+            float progress = 1f - (_currentWorkTimer / job.workDurationInSeconds);
             OnTimerTick?.Invoke(progress);
 
-            if (CurrentTimer >= CurrentJobDuration)
+            if (_currentWorkTimer <= 0f)
             {
-                IsWorking = false;
-                CompleteWork();
+                _isWorking = false;
+                _economy.AddMoney(job.salary, $"Зарплата: {job.jobTitle}");
+                OnWorkCompleted?.Invoke();
             }
-        }
-
-        private void CompleteWork()
-        {
-            JobConfig current = GetCurrentJob();
-            _economy.AddMoney(current.salary, $"Job: {current.jobTitle}");
-            OnWorkCompleted?.Invoke();
-        }
-
-        public bool PromoteToJob(string newJobId)
-        {
-            if (!AvailableJobs.ContainsKey(newJobId)) return false;
-            
-            _player.currentJobId = newJobId;
-            return true;
         }
     }
 }

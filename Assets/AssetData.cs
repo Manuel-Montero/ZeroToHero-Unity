@@ -7,5 +7,6 @@ namespace ZeroToHero.Assets
     {
         public List<string> ownedHouses = new List<string>();
         public List<string> ownedCars = new List<string>();
+        public List<string> ownedClothing = new List<string>(); // <--- Добавили одежду
     }
 }

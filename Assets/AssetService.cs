@@ -34,10 +34,16 @@ namespace ZeroToHero.Assets
             var bicycle = new AssetConfig { id = "car_bicycle", title = "Велосипед", type = AssetType.Car, price = 150 };
             var sedan = new AssetConfig { id = "car_sedan", title = "Подержанный седан", type = AssetType.Car, price = 3000 };
 
+            // Одежда
+            var casual = new AssetConfig { id = "wear_casual", title = "Повседневная одежда", type = AssetType.Clothing, price = 100 };
+            var suit = new AssetConfig { id = "wear_suit", title = "Деловой костюм", type = AssetType.Clothing, price = 1200 };
+
             Configs.Add(hostel.id, hostel);
             Configs.Add(apartment.id, apartment);
             Configs.Add(bicycle.id, bicycle);
             Configs.Add(sedan.id, sedan);
+            Configs.Add(casual.id, casual);
+            Configs.Add(suit.id, suit);
         }
 
         public bool HasAsset(string assetId)
@@ -45,7 +51,8 @@ namespace ZeroToHero.Assets
             if (_player.assets == null) _player.assets = new AssetData();
             
             return _player.assets.ownedHouses.Contains(assetId) || 
-                   _player.assets.ownedCars.Contains(assetId);
+                   _player.assets.ownedCars.Contains(assetId) ||
+                   _player.assets.ownedClothing.Contains(assetId);
         }
 
         public bool BuyAsset(string assetId)
@@ -66,6 +73,10 @@ namespace ZeroToHero.Assets
             else if (config.type == AssetType.Car)
             {
                 _player.assets.ownedCars.Add(assetId);
+            }
+            else if (config.type == AssetType.Clothing)
+            {
+                _player.assets.ownedClothing.Add(assetId);
             }
 
             Debug.Log($"[AssetService] Куплено имущество: {config.title}");

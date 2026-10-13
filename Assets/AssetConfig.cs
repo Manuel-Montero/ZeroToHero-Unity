@@ -3,7 +3,8 @@ namespace ZeroToHero.Assets
     public enum AssetType
     {
         House,
-        Car
+        Car,
+        Clothing // <--- Добавили одежду
     }
 
     [System.Serializable]
