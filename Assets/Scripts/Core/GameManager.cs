@@ -23,6 +23,8 @@ namespace ZeroToHero.Core
         public AssetService Assets { get; private set; }
         public TimeManager TimeSystem { get; private set; } // <--- Добавили
         public SaveService SaveSystem { get; private set; }
+        public LoadResult LastLoadResult { get; private set; }
+        public SaveResult LastSaveResult { get; private set; }
 
         private MainUI _mainUI;
 
@@ -43,34 +45,50 @@ namespace ZeroToHero.Core
         private void InitServices()
         {
             SaveSystem = new SaveService();
-            Player = SaveSystem.Load();
+            LastLoadResult = SaveSystem.Load();
+            if (!LastLoadResult.Success)
+            {
+                Debug.LogError("[GameManager] Игра остановлена: " + LastLoadResult.Error);
+                enabled = false;
+
+                MainUI unavailableUi = Object.FindAnyObjectByType<MainUI>();
+                if (unavailableUi != null) unavailableUi.enabled = false;
+                return;
+            }
+
+            Player = LastLoadResult.Data;
 
             Economy = new EconomyService(Player);
-            Job = new JobService(Player, Economy);
-            Education = new EducationService(Player, Economy);
             Needs = new NeedsService(Player, Economy);
             Business = new BusinessService(Player, Economy);
-            Bank = new BankService(Player, Economy);
             Assets = new AssetService(Player, Economy);
-            TimeSystem = new TimeManager(Player, Economy, Assets); // <--- Добавили
+            TimeSystem = new TimeManager(Player, Economy, Assets);
+            Job = new JobService(Player, Economy, TimeSystem);
+            Education = new EducationService(Player, Economy, TimeSystem);
+            Bank = new BankService(Player, Economy, TimeSystem);
 
             // Автосохранения
-            Economy.OnBalanceChanged += (amount, reason) => SaveGame();
+            // Persist actions after their state is complete. Saving from the balance
+            // event would capture intermediate states (for example, before a deposit
+            // is marked claimed).
+            Job.OnWorkStarted += SaveGame;
+            Education.OnStudyStarted += SaveGame;
             Job.OnWorkCompleted += () => 
             {
                 Needs.ConsumeNeeds(5, 5);
-                SaveGame();
             };
             Education.OnStudyCompleted += (eduId) => 
             {
                 Needs.ConsumeNeeds(10, 10);
-                SaveGame();
             };
             Needs.OnNeedsChanged += SaveGame;
             Business.OnBusinessUpdated += SaveGame;
             Bank.OnBankUpdated += SaveGame;
             Assets.OnAssetsUpdated += SaveGame;
             TimeSystem.OnDayPassed += SaveGame; // <--- Сохранение при смене дня
+
+            if (Bank.MigratedLegacyDeadlines)
+                SaveGame();
         }
 
         private void Start()
@@ -84,15 +102,16 @@ namespace ZeroToHero.Core
 
         private void Update()
         {
-            if (Job != null) Job.UpdateTimer(Time.deltaTime);
-            if (Education != null) Education.UpdateTimer(Time.deltaTime);
-            if (Bank != null) Bank.UpdateTimer(Time.deltaTime);
-            if (TimeSystem != null) TimeSystem.UpdateTimer(Time.deltaTime); // <--- Обновление календаря
+            if (Job != null) Job.UpdateTimer(Time.unscaledDeltaTime);
+            if (Education != null) Education.UpdateTimer(Time.unscaledDeltaTime);
+            if (Bank != null) Bank.UpdateTimer(Time.unscaledDeltaTime);
+            if (TimeSystem != null) TimeSystem.UpdateTimer(Time.unscaledDeltaTime);
         }
 
         public void SaveGame()
         {
-            if (SaveSystem != null && Player != null) SaveSystem.Save(Player);
+            if (SaveSystem != null && Player != null)
+                LastSaveResult = SaveSystem.Save(Player);
         }
 
         private void OnApplicationPause(bool pauseStatus)

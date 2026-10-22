@@ -10,16 +10,33 @@ namespace ZeroToHero.Bank
     {
         private PlayerData _player;
         private EconomyService _economy;
+        private readonly TimeManager _time;
 
         public Dictionary<string, DepositConfig> Configs { get; private set; }
             = new Dictionary<string, DepositConfig>();
 
         public event Action OnBankUpdated;
+        public bool MigratedLegacyDeadlines { get; private set; }
 
-        public BankService(PlayerData player, EconomyService economy)
+        public BankService(PlayerData player, EconomyService economy, TimeManager time = null)
         {
             _player = player;
             _economy = economy;
+            _time = time;
+
+            if (_player.activeDeposits != null && _time != null)
+            {
+                foreach (var deposit in _player.activeDeposits)
+                {
+                    // Older saves persisted only the remaining countdown. Preserve it
+                    // from load time; offline time before this migration is unknowable.
+                    if (deposit.isActive && deposit.endUtcTicks <= 0)
+                    {
+                        deposit.endUtcTicks = _time.CreateDeadlineTicks(deposit.timer);
+                        MigratedLegacyDeadlines = true;
+                    }
+                }
+            }
 
             InitDefaultConfigs();
         }
@@ -71,6 +88,7 @@ namespace ZeroToHero.Bank
 
             data.investedAmount = amount;
             data.timer = config.durationInSeconds;
+            data.endUtcTicks = _time != null ? _time.CreateDeadlineTicks(config.durationInSeconds) : 0;
             data.isActive = true;
             data.isReadyToClaim = false;
 
@@ -82,17 +100,18 @@ namespace ZeroToHero.Bank
         // Обновление таймера
         public void UpdateTimer(float deltaTime)
         {
-            if (_player.activeDeposits == null) return;
+            if (_player.activeDeposits == null || _time == null) return;
 
             bool changed = false;
             foreach (var data in _player.activeDeposits)
             {
                 if (data.isActive && !data.isReadyToClaim)
                 {
-                    data.timer -= deltaTime;
+                    data.timer = _time.GetRemainingSeconds(data.endUtcTicks);
                     if (data.timer <= 0f)
                     {
                         data.timer = 0f;
+                        data.endUtcTicks = 0;
                         data.isActive = false;
                         data.isReadyToClaim = true;
                         changed = true;
@@ -115,11 +134,18 @@ namespace ZeroToHero.Bank
 
             if (!data.isReadyToClaim) return false;
 
-            int totalPayout = data.investedAmount + Mathf.RoundToInt(data.investedAmount * config.profitPercent);
-            _economy.AddMoney(totalPayout, $"Выплата по вкладу: {config.title}");
+            int profit = Mathf.RoundToInt(data.investedAmount * config.profitPercent);
+            long totalPayoutLong = (long)data.investedAmount + profit;
+            if (totalPayoutLong <= 0 || totalPayoutLong > int.MaxValue)
+                return false;
+
+            int totalPayout = (int)totalPayoutLong;
+            if (!_economy.AddMoney(totalPayout, $"Выплата по вкладу: {config.title}"))
+                return false;
 
             data.investedAmount = 0;
             data.isReadyToClaim = false;
+            data.endUtcTicks = 0;
 
             Debug.Log($"[BankService] Выплачено по вкладу: {totalPayout} KZT");
             OnBankUpdated?.Invoke();

@@ -10,23 +10,24 @@ namespace ZeroToHero.Jobs
 {
     public class JobService
     {
-        private PlayerData _player;
-        private EconomyService _economy;
+        private readonly PlayerData _player;
+        private readonly EconomyService _economy;
+        private readonly TimeManager _time;
 
         public Dictionary<string, JobConfig> JobsConfig { get; private set; } 
             = new Dictionary<string, JobConfig>();
 
-        private float _currentWorkTimer = 0f;
-        private bool _isWorking = false;
+        public bool IsWorking => _player.workTimer != null && _player.workTimer.isActive;
 
         public event Action OnWorkStarted;
         public event Action<float> OnTimerTick;
         public event Action OnWorkCompleted;
 
-        public JobService(PlayerData player, EconomyService economy)
+        public JobService(PlayerData player, EconomyService economy, TimeManager time = null)
         {
             _player = player;
             _economy = economy;
+            _time = time;
 
             InitDefaultJobs();
         }
@@ -134,29 +135,36 @@ namespace ZeroToHero.Jobs
 
         public void StartWork()
         {
-            if (_isWorking) return;
+            if (IsWorking || _time == null) return;
 
             var job = GetCurrentJob();
-            _isWorking = true;
-            _currentWorkTimer = job.workDurationInSeconds;
+            _player.workTimer.isActive = true;
+            _player.workTimer.jobId = job.id;
+            _player.workTimer.salary = job.salary;
+            _player.workTimer.durationSeconds = job.workDurationInSeconds;
+            _player.workTimer.endUtcTicks = _time.CreateDeadlineTicks(job.workDurationInSeconds);
 
             OnWorkStarted?.Invoke();
         }
 
         public void UpdateTimer(float deltaTime)
         {
-            if (!_isWorking) return;
+            if (!IsWorking || _time == null) return;
 
-            _currentWorkTimer -= deltaTime;
-            var job = GetCurrentJob();
-
-            float progress = 1f - (_currentWorkTimer / job.workDurationInSeconds);
+            var timer = _player.workTimer;
+            float remaining = _time.GetRemainingSeconds(timer.endUtcTicks);
+            float progress = timer.durationSeconds <= 0f ? 1f : 1f - (remaining / timer.durationSeconds);
             OnTimerTick?.Invoke(progress);
 
-            if (_currentWorkTimer <= 0f)
+            if (remaining <= 0f)
             {
-                _isWorking = false;
-                _economy.AddMoney(job.salary, $"Зарплата: {job.jobTitle}");
+                string jobTitle = JobsConfig.TryGetValue(timer.jobId, out var completedJob)
+                    ? completedJob.jobTitle : timer.jobId;
+                int salary = timer.salary;
+                if (!_economy.AddMoney(salary, $"Зарплата: {jobTitle}"))
+                    return;
+
+                timer.isActive = false;
                 OnWorkCompleted?.Invoke();
             }
         }

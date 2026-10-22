@@ -85,7 +85,8 @@ namespace ZeroToHero.Business
 
             // Расчёт дохода с учётом звёзд (каждая звезда даёт +25% к доходу)
             int finalIncome = config.baseIncome + (config.baseIncome * data.stars / 4);
-            _economy.AddMoney(finalIncome, $"Доход от бизнеса: {config.title}");
+            if (!_economy.AddMoney(finalIncome, $"Доход от бизнеса: {config.title}"))
+                return false;
 
             data.collectCount++;
 

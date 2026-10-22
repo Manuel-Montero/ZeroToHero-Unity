@@ -7,29 +7,47 @@ namespace ZeroToHero.Core
 {
     public class TimeManager
     {
-        private PlayerData _player;
-        private EconomyService _economy;
-        private AssetService _assets;
+        public const float SecondsPerGameDay = 10f;
 
-        private float _dayTimer = 0f;
-        private const float SECONDS_PER_DAY = 10f; // 10 секунд реального времени = 1 день
+        private readonly PlayerData _player;
+        private readonly EconomyService _economy;
+        private readonly AssetService _assets;
+        private readonly Func<long> _utcTicksProvider;
 
         public event Action OnDayPassed;
         public event Action OnMonthPassed;
 
-        public TimeManager(PlayerData player, EconomyService economy, AssetService assets)
+        public TimeManager(PlayerData player, EconomyService economy, AssetService assets,
+            Func<long> utcTicksProvider = null)
         {
-            _player = player;
-            _economy = economy;
-            _assets = assets;
+            _player = player ?? throw new ArgumentNullException(nameof(player));
+            _economy = economy ?? throw new ArgumentNullException(nameof(economy));
+            _assets = assets ?? throw new ArgumentNullException(nameof(assets));
+            _utcTicksProvider = utcTicksProvider ?? (() => DateTime.UtcNow.Ticks);
+            _player.dayElapsedSeconds = Mathf.Clamp(_player.dayElapsedSeconds, 0f, SecondsPerGameDay);
         }
 
-        public void UpdateTimer(float deltaTime)
+        public long UtcNowTicks => _utcTicksProvider();
+
+        public long CreateDeadlineTicks(float durationSeconds)
         {
-            _dayTimer += deltaTime;
-            if (_dayTimer >= SECONDS_PER_DAY)
+            long durationTicks = (long)(Math.Max(0d, durationSeconds) * TimeSpan.TicksPerSecond);
+            return UtcNowTicks + durationTicks;
+        }
+
+        public float GetRemainingSeconds(long endUtcTicks)
+        {
+            return Mathf.Max(0f, (float)((endUtcTicks - UtcNowTicks) / (double)TimeSpan.TicksPerSecond));
+        }
+
+        public void UpdateTimer(float unscaledDeltaTime)
+        {
+            if (unscaledDeltaTime <= 0f) return;
+
+            _player.dayElapsedSeconds += unscaledDeltaTime;
+            while (_player.dayElapsedSeconds >= SecondsPerGameDay)
             {
-                _dayTimer -= SECONDS_PER_DAY;
+                _player.dayElapsedSeconds -= SecondsPerGameDay;
                 AdvanceDay();
             }
         }
@@ -37,7 +55,6 @@ namespace ZeroToHero.Core
         private void AdvanceDay()
         {
             _player.day++;
-
             if (_player.day > 30)
             {
                 _player.day = 1;
@@ -49,20 +66,23 @@ namespace ZeroToHero.Core
             OnDayPassed?.Invoke();
         }
 
-        // Ежемесячные списания за жилье и авто
         private void ProcessMonthlyExpenses()
         {
             int totalExpenses = 0;
+            if (_assets.HasAsset("house_hostel")) totalExpenses += 50;
+            if (_assets.HasAsset("house_apartment")) totalExpenses += 300;
+            if (_assets.HasAsset("car_sedan")) totalExpenses += 100;
 
-            if (_assets.HasAsset("house_hostel")) totalExpenses += 50;     // Аренда койко-места
-            if (_assets.HasAsset("house_apartment")) totalExpenses += 300; // Аренда квартиры
-            if (_assets.HasAsset("car_sedan")) totalExpenses += 100;      // Обслуживание авто
-
-            if (totalExpenses > 0)
+            int amountToSpend = Math.Min(totalExpenses, Math.Max(0, _player.money));
+            if (amountToSpend > 0)
             {
-                _economy.SpendMoney(totalExpenses, $"Ежемесячные расходы (Месяц {_player.month - 1})");
-                Debug.Log($"[TimeManager] Списано {totalExpenses} KZT за ежемесячное обслуживание.");
+                _economy.SpendMoney(amountToSpend, $"Ежемесячные расходы (Месяц {_player.month - 1})");
             }
+
+            if (amountToSpend < totalExpenses)
+                Debug.Log($"[TimeManager] Денег не хватило на ежемесячные расходы: списано {amountToSpend} из {totalExpenses} KZT; баланс не уходит ниже нуля.");
+            else if (amountToSpend > 0)
+                Debug.Log($"[TimeManager] Списано {amountToSpend} KZT за ежемесячное обслуживание.");
         }
     }
 }
