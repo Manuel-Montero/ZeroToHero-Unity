@@ -54,74 +54,16 @@ namespace ZeroToHero.UI
 
         private void Start()
         {
-            if (GameManager.Instance != null)
-            {
-                if (GameManager.Instance.Job != null)
-                {
-                    GameManager.Instance.Job.OnTimerTick += OnWorkProgress;
-                    GameManager.Instance.Job.OnWorkCompleted += OnWorkDone;
-                    GameManager.Instance.Job.OnWorkStarted += OnWorkStart;
-                    GameManager.Instance.Job.OnSalaryClaimed += UpdateUI;
-                }
+            // The mobile interface is generated at runtime so the existing scene
+            // hierarchy and serialized legacy references remain intact.
+            MobileGameUI mobileUi = GetComponent<MobileGameUI>();
+            if (mobileUi == null) mobileUi = gameObject.AddComponent<MobileGameUI>();
+            mobileUi.enabled = true;
+            mobileUi.Initialize();
 
-                if (GameManager.Instance.Education != null)
-                {
-                    GameManager.Instance.Education.OnStudyProgress += OnStudyProgress;
-                    GameManager.Instance.Education.OnStudyCompleted += OnStudyDone;
-                    GameManager.Instance.Education.OnStudyStarted += OnStudyStart;
-                }
-
-                if (GameManager.Instance.Needs != null)
-                {
-                    GameManager.Instance.Needs.OnNeedsChanged += UpdateUI;
-                }
-
-                if (GameManager.Instance.Business != null)
-                {
-                    GameManager.Instance.Business.OnBusinessUpdated += UpdateUI;
-                }
-
-                if (GameManager.Instance.Bank != null)
-                {
-                    GameManager.Instance.Bank.OnBankUpdated += UpdateUI;
-                }
-
-                if (GameManager.Instance.Assets != null)
-                {
-                    GameManager.Instance.Assets.OnAssetsUpdated += UpdateUI;
-                }
-
-                if (GameManager.Instance.TimeSystem != null)
-                {
-                    GameManager.Instance.TimeSystem.OnDayPassed += UpdateUI;
-                }
-            }
-
-            if (workButton != null)
-            {
-                workButton.onClick.AddListener(OnWorkButtonClicked);
-                _workButtonLabel = workButton.GetComponentInChildren<TMP_Text>(true);
-            }
-            if (studyButton != null) studyButton.onClick.AddListener(OnStudyButtonClicked);
-            if (promoteWaiterButton != null) promoteWaiterButton.onClick.AddListener(OnPromoteWaiterClicked);
-            
-            if (healButton != null) healButton.onClick.AddListener(OnHealClicked);
-            if (restButton != null) restButton.onClick.AddListener(OnRestClicked);
-
-            if (buyBusinessButton != null) buyBusinessButton.onClick.AddListener(OnBuyBusinessClicked);
-            if (collectIncomeButton != null) collectIncomeButton.onClick.AddListener(OnCollectIncomeClicked);
-
-            if (openDepositButton != null) openDepositButton.onClick.AddListener(OnOpenDepositClicked);
-            if (claimDepositButton != null) claimDepositButton.onClick.AddListener(OnClaimDepositClicked);
-
-            if (buyHouseButton != null) buyHouseButton.onClick.AddListener(OnBuyHouseClicked);
-            if (buyCarButton != null) buyCarButton.onClick.AddListener(OnBuyCarClicked);
-
-            if (promoteManagerButton != null) promoteManagerButton.onClick.AddListener(OnPromoteManagerClicked);
-            if (buyCasualClothingButton != null) buyCasualClothingButton.onClick.AddListener(() => BuyClothing("wear_casual"));
-            if (buySuitClothingButton != null) buySuitClothingButton.onClick.AddListener(() => BuyClothing("wear_suit"));
-
-            UpdateUI();
+            TabManager legacyTabs = GetComponent<TabManager>();
+            if (legacyTabs != null) legacyTabs.enabled = false;
+            enabled = false;
         }
 
         private void OnDestroy()
