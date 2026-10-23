@@ -127,6 +127,78 @@ namespace ZeroToHero.SaveTests
             Assert.That(Get<string>(result, "Error"), Is.Not.Empty);
         }
 
+        [Test]
+        public void BackupCreationFailure_LeavesPreviousSaveLoadable()
+        {
+            AssertSaveSuccess(Save(NewPlayer(101, 3)));
+            object service = NewServiceWithFailure(_savePath,
+                operation => operation == "backup.copy" ? new IOException("injected backup-copy failure") : null);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[SaveService\] Ошибка при сохранении:"));
+
+            object saveResult = _serviceType.GetMethod("Save").Invoke(service, new[] { NewPlayer(202, 4) });
+
+            Assert.That(Get<bool>(saveResult, "Success"), Is.False);
+            object loaded = Load();
+            Assert.That(Get<bool>(loaded, "Success"), Is.True);
+            Assert.That(GetFieldValue<int>(Get<object>(loaded, "Data"), "money"), Is.EqualTo(101));
+            Assert.That(File.ReadAllText(_savePath), Does.Contain("101"));
+        }
+
+        [Test]
+        public void PrimaryReplacementFailure_RollsBackAndAllowsRetryAndReload()
+        {
+            AssertSaveSuccess(Save(NewPlayer(101, 3)));
+            bool failOnce = true;
+            object service = NewServiceWithFailure(_savePath, operation =>
+            {
+                if (operation == "primary.install" && failOnce)
+                {
+                    failOnce = false;
+                    return new IOException("injected primary-install failure");
+                }
+
+                return null;
+            });
+            LogAssert.Expect(LogType.Error, new Regex(@"\[SaveService\] Ошибка при сохранении:"));
+
+            object failedSave = _serviceType.GetMethod("Save").Invoke(service, new[] { NewPlayer(202, 4) });
+
+            Assert.That(Get<bool>(failedSave, "Success"), Is.False);
+            object afterFailure = Load();
+            Assert.That(Get<bool>(afterFailure, "Success"), Is.True);
+            Assert.That(GetFieldValue<int>(Get<object>(afterFailure, "Data"), "money"), Is.EqualTo(101));
+
+            AssertSaveSuccess(_serviceType.GetMethod("Save").Invoke(service, new[] { NewPlayer(202, 4) }));
+            object afterRetry = Load();
+            Assert.That(Get<bool>(afterRetry, "Success"), Is.True);
+            Assert.That(GetFieldValue<int>(Get<object>(afterRetry, "Data"), "money"), Is.EqualTo(202));
+
+            File.WriteAllText(_savePath, "damaged after successful retry");
+            object recovered = Load();
+            Assert.That(Get<bool>(recovered, "Success"), Is.True);
+            Assert.That(Get<bool>(recovered, "RecoveredFromBackup"), Is.True);
+            Assert.That(GetFieldValue<int>(Get<object>(recovered, "Data"), "money"), Is.EqualTo(101));
+        }
+
+        [Test]
+        public void CorruptPrimaryAndBackup_ReturnErrorWithoutResettingProfile()
+        {
+            const string damagedPrimary = "broken primary contents";
+            const string damagedBackup = "broken backup contents";
+            File.WriteAllText(_savePath, damagedPrimary);
+            File.WriteAllText(_savePath + ".bak", damagedBackup);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[SaveService\] Не удалось прочитать сохранение\."));
+
+            object result = Load();
+
+            Assert.That(Get<bool>(result, "Success"), Is.False);
+            Assert.That(Get<bool>(result, "HasSave"), Is.True);
+            Assert.That(Get<object>(result, "Data"), Is.Null);
+            Assert.That(Get<string>(result, "Error"), Is.Not.Empty);
+            Assert.That(File.ReadAllText(_savePath), Is.EqualTo(damagedPrimary));
+            Assert.That(File.ReadAllText(_savePath + ".bak"), Is.EqualTo(damagedBackup));
+        }
+
         private object NewPlayer(int money, int day)
         {
             object player = Activator.CreateInstance(_playerType);
@@ -136,11 +208,18 @@ namespace ZeroToHero.SaveTests
         }
 
         private object NewService(string path) => Activator.CreateInstance(_serviceType, new object[] { path });
+        private object NewServiceWithFailure(string path, Func<string, Exception> failureProvider)
+            => Activator.CreateInstance(_serviceType,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new object[] { path, failureProvider }, null);
         private object Save(object player) => _serviceType.GetMethod("Save").Invoke(NewService(_savePath), new[] { player });
         private object Load() => _serviceType.GetMethod("Load").Invoke(NewService(_savePath), null);
 
         private static T Get<T>(object instance, string propertyName)
             => (T)instance.GetType().GetProperty(propertyName).GetValue(instance);
+
+        private static T GetFieldValue<T>(object instance, string fieldName)
+            => (T)instance.GetType().GetField(fieldName).GetValue(instance);
 
         private static void AssertSaveSuccess(object result)
             => Assert.That(Get<bool>(result, "Success"), Is.True, Get<string>(result, "Error"));

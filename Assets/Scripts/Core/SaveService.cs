@@ -52,19 +52,28 @@ namespace ZeroToHero.Core
 
         private readonly string _saveFilePath;
         private readonly string _backupFilePath;
+        private readonly Func<string, Exception> _testFailureProvider;
 
-        public SaveService() : this(Path.Combine(Application.persistentDataPath, "player_save.json"))
+        public SaveService() : this(Path.Combine(Application.persistentDataPath, "player_save.json"), null)
         {
         }
 
         // The path overload also lets automated tests use an isolated temporary directory.
         public SaveService(string saveFilePath)
+            : this(saveFilePath, null)
+        {
+        }
+
+        // Internal fault injection keeps filesystem failure tests deterministic without
+        // exposing a test-only hook to gameplay code or changing the production path.
+        internal SaveService(string saveFilePath, Func<string, Exception> testFailureProvider)
         {
             if (string.IsNullOrWhiteSpace(saveFilePath))
                 throw new ArgumentException("Путь к файлу сохранения не задан.", nameof(saveFilePath));
 
             _saveFilePath = saveFilePath;
             _backupFilePath = saveFilePath + ".bak";
+            _testFailureProvider = testFailureProvider;
         }
 
         public SaveResult Save(PlayerData data)
@@ -211,6 +220,7 @@ namespace ZeroToHero.Core
             string temporaryBackupPath = _backupFilePath + ".tmp";
             try
             {
+                ThrowIfInjectedFailure("backup.copy");
                 File.Copy(_saveFilePath, temporaryBackupPath, true);
                 if (!TryReadSave(temporaryBackupPath, out _, out string error))
                     throw new IOException("Проверка резервной копии не пройдена: " + error);
@@ -252,7 +262,7 @@ namespace ZeroToHero.Core
 
         // Same-directory moves work on Android and desktop filesystems. If the second
         // move fails, restore the old file; the validated .bak remains an extra fallback.
-        private static void ReplaceFile(string sourcePath, string destinationPath)
+        private void ReplaceFile(string sourcePath, string destinationPath)
         {
             if (!File.Exists(destinationPath))
             {
@@ -264,6 +274,8 @@ namespace ZeroToHero.Core
             File.Move(destinationPath, displacedPath);
             try
             {
+                if (string.Equals(destinationPath, _saveFilePath, StringComparison.Ordinal))
+                    ThrowIfInjectedFailure("primary.install");
                 File.Move(sourcePath, destinationPath);
             }
             catch
@@ -274,6 +286,12 @@ namespace ZeroToHero.Core
             }
 
             TryDelete(displacedPath);
+        }
+
+        private void ThrowIfInjectedFailure(string operation)
+        {
+            Exception exception = _testFailureProvider?.Invoke(operation);
+            if (exception != null) throw exception;
         }
 
         private static void PreserveCorruptFile(string path)
