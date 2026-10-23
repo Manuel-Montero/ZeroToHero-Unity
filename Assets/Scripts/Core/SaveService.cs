@@ -53,20 +53,54 @@ namespace ZeroToHero.Core
         private readonly string _saveFilePath;
         private readonly string _backupFilePath;
         private readonly Func<string, Exception> _testFailureProvider;
+        public bool IsTestProfile { get; }
 
-        public SaveService() : this(Path.Combine(Application.persistentDataPath, "player_save.json"), null)
+        public SaveService() : this(GetGameSavePath(Application.persistentDataPath), false, null)
         {
         }
 
-        // The path overload also lets automated tests use an isolated temporary directory.
+        // Explicit-path callers are responsible for choosing the correct storage environment.
         public SaveService(string saveFilePath)
-            : this(saveFilePath, null)
+            : this(saveFilePath, false, null)
         {
+        }
+
+        public static SaveService CreateGameProfile(string persistentDataPath)
+        {
+            if (string.IsNullOrWhiteSpace(persistentDataPath))
+                throw new ArgumentException("Папка игрового профиля не задана.", nameof(persistentDataPath));
+
+            return new SaveService(GetGameSavePath(persistentDataPath), false, null);
+        }
+
+        public static SaveService CreateTestProfile(string saveFilePath)
+        {
+            if (string.IsNullOrWhiteSpace(saveFilePath))
+                throw new ArgumentException("Путь тестового профиля не задан.", nameof(saveFilePath));
+
+            string fullPath = Path.GetFullPath(saveFilePath);
+            string tempRoot = Path.GetFullPath(Path.GetTempPath())
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (!fullPath.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Тестовое сохранение разрешено только в отдельной подпапке временного каталога.");
+
+            string gamePath = Path.GetFullPath(GetGameSavePath(Application.persistentDataPath));
+            if (string.Equals(fullPath, gamePath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(fullPath, gamePath + ".bak", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Путь тестового сохранения совпадает с игровым профилем или его резервной копией.");
+
+            return new SaveService(fullPath, true, null);
         }
 
         // Internal fault injection keeps filesystem failure tests deterministic without
         // exposing a test-only hook to gameplay code or changing the production path.
         internal SaveService(string saveFilePath, Func<string, Exception> testFailureProvider)
+            : this(saveFilePath, false, testFailureProvider)
+        {
+        }
+
+        private SaveService(string saveFilePath, bool isTestProfile, Func<string, Exception> testFailureProvider)
         {
             if (string.IsNullOrWhiteSpace(saveFilePath))
                 throw new ArgumentException("Путь к файлу сохранения не задан.", nameof(saveFilePath));
@@ -74,7 +108,11 @@ namespace ZeroToHero.Core
             _saveFilePath = saveFilePath;
             _backupFilePath = saveFilePath + ".bak";
             _testFailureProvider = testFailureProvider;
+            IsTestProfile = isTestProfile;
         }
+
+        private static string GetGameSavePath(string persistentDataPath)
+            => Path.Combine(persistentDataPath, "player_save.json");
 
         public SaveResult Save(PlayerData data)
         {

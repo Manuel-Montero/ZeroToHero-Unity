@@ -44,7 +44,10 @@ namespace ZeroToHero.Core
 
         private void InitServices()
         {
-            SaveSystem = new SaveService();
+            // An explicitly configured test profile must survive repeated service
+            // initialization; normal gameplay still selects the persistent profile.
+            if (SaveSystem == null)
+                SaveSystem = SaveService.CreateGameProfile(Application.persistentDataPath);
             LastLoadResult = SaveSystem.Load();
             if (!LastLoadResult.Success)
             {
@@ -60,9 +63,9 @@ namespace ZeroToHero.Core
 
             Economy = new EconomyService(Player);
             Needs = new NeedsService(Player, Economy);
-            Business = new BusinessService(Player, Economy);
             Assets = new AssetService(Player, Economy);
             TimeSystem = new TimeManager(Player, Economy, Assets);
+            Business = new BusinessService(Player, Economy, TimeSystem);
             Job = new JobService(Player, Economy, TimeSystem);
             Education = new EducationService(Player, Economy, TimeSystem);
             Bank = new BankService(Player, Economy, TimeSystem);
@@ -72,6 +75,7 @@ namespace ZeroToHero.Core
             // event would capture intermediate states (for example, before a deposit
             // is marked claimed).
             Job.OnWorkStarted += SaveGame;
+            Job.OnSalaryClaimed += SaveGame;
             Education.OnStudyStarted += SaveGame;
             Job.OnWorkCompleted += () => 
             {
@@ -91,6 +95,18 @@ namespace ZeroToHero.Core
                 SaveGame();
         }
 
+#if UNITY_EDITOR
+        public void ConfigureSaveServiceForTesting(SaveService testSaveService)
+        {
+            if (testSaveService == null || !testSaveService.IsTestProfile)
+                throw new System.ArgumentException("Для тестовой инициализации требуется явно созданный изолированный тестовый профиль.", nameof(testSaveService));
+            if (SaveSystem != null)
+                throw new System.InvalidOperationException("Тестовый профиль необходимо назначить до инициализации сервисов.");
+
+            SaveSystem = testSaveService;
+        }
+#endif
+
         private void Start()
         {
             _mainUI = Object.FindAnyObjectByType<MainUI>();
@@ -105,6 +121,7 @@ namespace ZeroToHero.Core
             if (Job != null) Job.UpdateTimer(Time.unscaledDeltaTime);
             if (Education != null) Education.UpdateTimer(Time.unscaledDeltaTime);
             if (Bank != null) Bank.UpdateTimer(Time.unscaledDeltaTime);
+            if (Business != null) Business.UpdateTimer(Time.unscaledDeltaTime);
             if (TimeSystem != null) TimeSystem.UpdateTimer(Time.unscaledDeltaTime);
         }
 

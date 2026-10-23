@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using ZeroToHero.Business;
 using ZeroToHero.Core;
 
 namespace ZeroToHero.UI
@@ -49,6 +50,8 @@ namespace ZeroToHero.UI
         public Button buyCasualClothingButton; // <--- Кнопка покупки "Повседневная одежда" (100 KZT)
         public Button buySuitClothingButton;   // <--- Кнопка покупки "Деловой костюм" (1200 KZT)
 
+        private TMP_Text _workButtonLabel;
+
         private void Start()
         {
             if (GameManager.Instance != null)
@@ -58,6 +61,7 @@ namespace ZeroToHero.UI
                     GameManager.Instance.Job.OnTimerTick += OnWorkProgress;
                     GameManager.Instance.Job.OnWorkCompleted += OnWorkDone;
                     GameManager.Instance.Job.OnWorkStarted += OnWorkStart;
+                    GameManager.Instance.Job.OnSalaryClaimed += UpdateUI;
                 }
 
                 if (GameManager.Instance.Education != null)
@@ -93,7 +97,11 @@ namespace ZeroToHero.UI
                 }
             }
 
-            if (workButton != null) workButton.onClick.AddListener(OnWorkButtonClicked);
+            if (workButton != null)
+            {
+                workButton.onClick.AddListener(OnWorkButtonClicked);
+                _workButtonLabel = workButton.GetComponentInChildren<TMP_Text>(true);
+            }
             if (studyButton != null) studyButton.onClick.AddListener(OnStudyButtonClicked);
             if (promoteWaiterButton != null) promoteWaiterButton.onClick.AddListener(OnPromoteWaiterClicked);
             
@@ -125,6 +133,7 @@ namespace ZeroToHero.UI
                     GameManager.Instance.Job.OnTimerTick -= OnWorkProgress;
                     GameManager.Instance.Job.OnWorkCompleted -= OnWorkDone;
                     GameManager.Instance.Job.OnWorkStarted -= OnWorkStart;
+                    GameManager.Instance.Job.OnSalaryClaimed -= UpdateUI;
                 }
 
                 if (GameManager.Instance.Education != null)
@@ -158,20 +167,40 @@ namespace ZeroToHero.UI
 
         private void Update()
         {
+            bool refresh = false;
             if (GameManager.Instance != null && GameManager.Instance.Bank != null)
             {
                 var depData = GameManager.Instance.Bank.GetDepositData("dep_quick");
                 if (depData.isActive)
                 {
-                    UpdateUI();
+                    refresh = true;
                 }
             }
+
+            if (!refresh && GameManager.Instance != null && GameManager.Instance.Business != null)
+            {
+                var coffee = GameManager.Instance.Business.GetBusinessData("biz_coffee");
+                refresh = coffee.isPurchased && coffee.accumulatedIncome < BusinessService.MaxAccumulatedIncome;
+            }
+
+            if (refresh) UpdateUI();
         }
 
         private void OnWorkButtonClicked()
         {
-            if (!GameManager.Instance.Needs.CanWork()) return;
-            GameManager.Instance.Job.StartWork();
+            GameManager game = GameManager.Instance;
+            if (game == null || game.Job == null) return;
+
+            if (game.Job.IsSalaryReadyToClaim)
+            {
+                game.Job.ClaimSalary();
+            }
+            else if (!game.Job.IsWorking && game.Needs.CanWork())
+            {
+                game.Job.StartWork();
+            }
+
+            UpdateUI();
         }
 
         private void OnStudyButtonClicked()
@@ -252,17 +281,17 @@ namespace ZeroToHero.UI
 
         private void OnWorkStart()
         {
-            if (workButton != null) workButton.interactable = false;
+            UpdateWorkButtonState();
         }
 
         private void OnWorkProgress(float progress)
         {
             if (workProgressBar != null) workProgressBar.fillAmount = progress;
+            UpdateWorkButtonState();
         }
 
         private void OnWorkDone()
         {
-            if (workButton != null) workButton.interactable = true;
             if (workProgressBar != null) workProgressBar.fillAmount = 0f;
             UpdateUI();
         }
@@ -295,6 +324,8 @@ namespace ZeroToHero.UI
             var bank = GameManager.Instance.Bank;
             var assets = GameManager.Instance.Assets;
 
+            UpdateWorkButtonState();
+
             if (moneyText != null) moneyText.text = $"{player.money} KZT";
             if (healthText != null) healthText.text = $"Здоровье: {player.health}%";
             if (moodText != null) moodText.text = $"Настроение: {player.mood}%";
@@ -315,12 +346,28 @@ namespace ZeroToHero.UI
                 var coffeeData = biz.GetBusinessData("biz_coffee");
                 if (businessStatusText != null)
                 {
-                    businessStatusText.text = coffeeData.isPurchased
-                        ? $"Кофейня: Куплена | Звёзды: {coffeeData.stars}/3"
-                        : "Кофейня: Не куплена (1000 KZT)";
+                    if (!coffeeData.isPurchased)
+                    {
+                        businessStatusText.text = "Кофейня: Не куплена (1000 KZT)";
+                    }
+                    else if (coffeeData.accumulatedIncome >= BusinessService.MaxAccumulatedIncome)
+                    {
+                        businessStatusText.text = $"Кофемашина | Накоплено: {coffeeData.accumulatedIncome}/1500 KZT | Лимит достигнут";
+                    }
+                    else
+                    {
+                        int secondsLeft = Mathf.CeilToInt(biz.GetRemainingCycleSeconds("biz_coffee"));
+                        businessStatusText.text = $"Кофемашина | Накоплено: {coffeeData.accumulatedIncome}/1500 KZT | Следующий цикл: {secondsLeft} сек. | Звёзды: {coffeeData.stars}/3";
+                    }
                 }
-                if (buyBusinessButton != null) buyBusinessButton.interactable = !coffeeData.isPurchased;
-                if (collectIncomeButton != null) collectIncomeButton.interactable = coffeeData.isPurchased;
+                if (buyBusinessButton != null)
+                {
+                    bool canAfford = biz.Configs.TryGetValue("biz_coffee", out var coffeeConfig) &&
+                        player.money >= coffeeConfig.buyCost;
+                    buyBusinessButton.interactable = !coffeeData.isPurchased && canAfford;
+                }
+                if (collectIncomeButton != null)
+                    collectIncomeButton.interactable = coffeeData.isPurchased && coffeeData.accumulatedIncome > 0;
             }
 
             if (bank != null)
@@ -371,6 +418,34 @@ namespace ZeroToHero.UI
 
                 if (buyCasualClothingButton != null) buyCasualClothingButton.interactable = !hasCasual;
                 if (buySuitClothingButton != null) buySuitClothingButton.interactable = !hasSuit;
+            }
+        }
+
+        private void UpdateWorkButtonState()
+        {
+            GameManager game = GameManager.Instance;
+            if (game == null || game.Job == null) return;
+
+            var job = game.Job;
+            if (workButton != null)
+            {
+                workButton.interactable = !job.IsWorking &&
+                    (job.IsSalaryReadyToClaim || (game.Needs != null && game.Needs.CanWork()));
+            }
+
+            if (_workButtonLabel == null) return;
+
+            if (job.IsWorking)
+            {
+                _workButtonLabel.text = $"Работа: осталось {Mathf.CeilToInt(job.RemainingWorkSeconds)} сек.";
+            }
+            else if (job.IsSalaryReadyToClaim)
+            {
+                _workButtonLabel.text = $"Получить зарплату ({game.Player.workTimer.salary} KZT)";
+            }
+            else
+            {
+                _workButtonLabel.text = "Начать работу";
             }
         }
     }

@@ -33,6 +33,7 @@ namespace ZeroToHero.Player
     public class WorkTimerData
     {
         public bool isActive;
+        public bool isReadyToClaim;
         public long endUtcTicks;
         public string jobId;
         public int salary;

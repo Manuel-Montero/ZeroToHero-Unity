@@ -53,12 +53,17 @@ namespace ZeroToHero.SaveTests
         }
 
         [Test]
-        public void WorkDeadline_ResumesAfterLoadAndPaysOnlyOnce()
+        public void WorkCycle_ResumesCompletesWaitsForClaimAndCanStartAgain()
         {
             SetField(_player, "money", 0);
             object job = Activator.CreateInstance(_jobType, _player, _economy, _time);
             Invoke(job, "StartWork");
             long end = NestedField<long>(_player, "workTimer", "endUtcTicks");
+            Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.True);
+            Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.False);
+            Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.False);
+            Assert.That(Field<int>(_player, "money"), Is.Zero);
+            Assert.That(Transactions, Is.Empty);
 
             string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ZeroToHero_TimerTest_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
@@ -69,30 +74,51 @@ namespace ZeroToHero.SaveTests
                 object save = Activator.CreateInstance(saveType, path);
                 object saveResult = saveType.GetMethod("Save").Invoke(save, new[] { _player });
                 Assert.That((bool)saveResult.GetType().GetProperty("Success").GetValue(saveResult), Is.True);
+                _now = end - TimeSpan.TicksPerSecond;
                 object loadResult = saveType.GetMethod("Load").Invoke(save, null);
+                Assert.That((bool)loadResult.GetType().GetProperty("Success").GetValue(loadResult), Is.True);
                 _player = loadResult.GetType().GetProperty("Data").GetValue(loadResult);
-                _economy = Activator.CreateInstance(_economyType, new object[] { _player, null });
-                _assets = Activator.CreateInstance(_assetsType, _player, _economy);
-                Func<long> loadedClock = () => _now;
-                _time = Activator.CreateInstance(_timeType, _player, _economy, _assets, loadedClock);
+                RebuildServices();
                 job = Activator.CreateInstance(_jobType, _player, _economy, _time);
                 Assert.That(NestedField<long>(_player, "workTimer", "endUtcTicks"), Is.EqualTo(end));
+                Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.True);
+                Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.False);
+                Invoke(job, "UpdateTimer", 0f);
+                Assert.That(Field<int>(_player, "money"), Is.Zero);
+                Assert.That(Transactions, Is.Empty);
             }
             finally
             {
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
             }
 
-            _now = end + TimeSpan.TicksPerSecond;
+            _now = end;
             Invoke(job, "UpdateTimer", 0f);
-            Assert.That(Field<int>(_player, "money"), Is.EqualTo(100));
             Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.False);
+            Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
+            Assert.That(Field<int>(_player, "money"), Is.Zero);
+            Assert.That(Transactions, Is.Empty);
+            long completedEnd = NestedField<long>(_player, "workTimer", "endUtcTicks");
+
+            Invoke(job, "StartWork");
+            Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
+            Assert.That(NestedField<long>(_player, "workTimer", "endUtcTicks"), Is.EqualTo(completedEnd));
+            Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.True);
+            Assert.That(Field<int>(_player, "money"), Is.EqualTo(100));
+            Assert.That(Transactions.Count, Is.EqualTo(1));
+            AssertTransaction(Transactions[0], "income", 100, 0, 100, "Зарплата: Курьер");
+            Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.False);
             Invoke(job, "UpdateTimer", 0f);
             Assert.That(Field<int>(_player, "money"), Is.EqualTo(100));
+            Assert.That(Transactions.Count, Is.EqualTo(1));
+
+            Invoke(job, "StartWork");
+            Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.True);
+            Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.False);
         }
 
         [Test]
-        public void WorkCompletion_RemainsCompletedAfterSavingAndLoadingAgain()
+        public void PendingSalary_SurvivesReloadAndPaidCycleCannotBeClaimedAgain()
         {
             SetField(_player, "money", 0);
             object job = Activator.CreateInstance(_jobType, _player, _economy, _time);
@@ -113,8 +139,18 @@ namespace ZeroToHero.SaveTests
                 _now = end;
                 job = Activator.CreateInstance(_jobType, _player, _economy, _time);
                 Invoke(job, "UpdateTimer", 0f);
-                Assert.That(Field<int>(_player, "money"), Is.EqualTo(100));
+                Assert.That(Field<int>(_player, "money"), Is.Zero);
                 Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.False);
+                Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
+                Assert.That(Transactions, Is.Empty);
+                AssertSaveSucceeded(saveType.GetMethod("Save").Invoke(save, new[] { _player }));
+
+                _player = GetProperty<object>(saveType.GetMethod("Load").Invoke(save, null), "Data");
+                RebuildServices();
+                job = Activator.CreateInstance(_jobType, _player, _economy, _time);
+                Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
+                Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.True);
+                Assert.That(Field<int>(_player, "money"), Is.EqualTo(100));
                 Assert.That(Transactions.Count, Is.EqualTo(1));
                 AssertTransaction(Transactions[0], "income", 100, 0, 100, "Зарплата: Курьер");
                 AssertSaveSucceeded(saveType.GetMethod("Save").Invoke(save, new[] { _player }));
@@ -122,12 +158,14 @@ namespace ZeroToHero.SaveTests
                 _player = GetProperty<object>(saveType.GetMethod("Load").Invoke(save, null), "Data");
                 RebuildServices();
                 job = Activator.CreateInstance(_jobType, _player, _economy, _time);
+                Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.False);
                 Invoke(job, "UpdateTimer", 0f);
 
                 Assert.That(Field<int>(_player, "money"), Is.EqualTo(100));
                 Assert.That(Transactions.Count, Is.EqualTo(1));
                 AssertTransaction(Transactions[0], "income", 100, 0, 100, "Зарплата: Курьер");
                 Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.False);
+                Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.False);
             }
             finally
             {
@@ -136,7 +174,7 @@ namespace ZeroToHero.SaveTests
         }
 
         [Test]
-        public void WorkSalaryOverflow_DoesNotCompleteActionOrAddTransaction()
+        public void WorkSalaryOverflow_LeavesSalaryClaimPendingWithoutCredit()
         {
             SetField(_player, "money", int.MaxValue);
             object job = Activator.CreateInstance(_jobType, _player, _economy, _time);
@@ -147,8 +185,47 @@ namespace ZeroToHero.SaveTests
             Invoke(job, "UpdateTimer", 0f);
 
             Assert.That(Field<int>(_player, "money"), Is.EqualTo(int.MaxValue));
-            Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.True);
+            Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.False);
+            Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
+            Assert.That(InvokeResult<bool>(job, "ClaimSalary"), Is.False);
+            Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
             Assert.That(Transactions, Is.Empty);
+        }
+
+        [Test]
+        public void WorkDeadlineExpiredOffline_BecomesClaimableWithoutAutomaticPayment()
+        {
+            SetField(_player, "money", 0);
+            object job = Activator.CreateInstance(_jobType, _player, _economy, _time);
+            Invoke(job, "StartWork");
+            long end = NestedField<long>(_player, "workTimer", "endUtcTicks");
+            string directory = NewTemporaryDirectory("OfflineWorkCompletion");
+            string path = System.IO.Path.Combine(directory, "save.json");
+            Type saveType = _playerType.Assembly.GetType("ZeroToHero.Core.SaveService", true);
+            object save = Activator.CreateInstance(saveType, path);
+            try
+            {
+                AssertSaveSucceeded(saveType.GetMethod("Save").Invoke(save, new[] { _player }));
+                _now = end + TimeSpan.TicksPerHour;
+                _player = GetProperty<object>(saveType.GetMethod("Load").Invoke(save, null), "Data");
+                RebuildServices();
+                job = Activator.CreateInstance(_jobType, _player, _economy, _time);
+
+                Invoke(job, "UpdateTimer", 0f);
+
+                Assert.That(NestedField<bool>(_player, "workTimer", "isActive"), Is.False);
+                Assert.That(NestedField<bool>(_player, "workTimer", "isReadyToClaim"), Is.True);
+                Assert.That(Field<int>(_player, "money"), Is.Zero);
+                Assert.That(Transactions, Is.Empty);
+
+                Invoke(job, "UpdateTimer", 0f);
+                Assert.That(Field<int>(_player, "money"), Is.Zero);
+                Assert.That(Transactions, Is.Empty);
+            }
+            finally
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            }
         }
 
         [Test]

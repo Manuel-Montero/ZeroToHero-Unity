@@ -18,10 +18,15 @@ namespace ZeroToHero.Jobs
             = new Dictionary<string, JobConfig>();
 
         public bool IsWorking => _player.workTimer != null && _player.workTimer.isActive;
+        public bool IsSalaryReadyToClaim => _player.workTimer != null && _player.workTimer.isReadyToClaim;
+        public float RemainingWorkSeconds => IsWorking && _time != null
+            ? _time.GetRemainingSeconds(_player.workTimer.endUtcTicks)
+            : 0f;
 
         public event Action OnWorkStarted;
         public event Action<float> OnTimerTick;
         public event Action OnWorkCompleted;
+        public event Action OnSalaryClaimed;
 
         public JobService(PlayerData player, EconomyService economy, TimeManager time = null)
         {
@@ -135,16 +140,38 @@ namespace ZeroToHero.Jobs
 
         public void StartWork()
         {
-            if (IsWorking || _time == null) return;
+            if (IsWorking || IsSalaryReadyToClaim || _time == null) return;
 
             var job = GetCurrentJob();
             _player.workTimer.isActive = true;
+            _player.workTimer.isReadyToClaim = false;
             _player.workTimer.jobId = job.id;
             _player.workTimer.salary = job.salary;
             _player.workTimer.durationSeconds = job.workDurationInSeconds;
             _player.workTimer.endUtcTicks = _time.CreateDeadlineTicks(job.workDurationInSeconds);
 
             OnWorkStarted?.Invoke();
+        }
+
+        public bool ClaimSalary()
+        {
+            if (!IsSalaryReadyToClaim) return false;
+
+            WorkTimerData timer = _player.workTimer;
+            string jobTitle = JobsConfig.TryGetValue(timer.jobId, out var completedJob)
+                ? completedJob.jobTitle
+                : timer.jobId;
+
+            if (!_economy.AddMoney(timer.salary, $"Зарплата: {jobTitle}"))
+                return false;
+
+            timer.isReadyToClaim = false;
+            timer.endUtcTicks = 0;
+            timer.jobId = null;
+            timer.salary = 0;
+            timer.durationSeconds = 0f;
+            OnSalaryClaimed?.Invoke();
+            return true;
         }
 
         public void UpdateTimer(float deltaTime)
@@ -158,13 +185,8 @@ namespace ZeroToHero.Jobs
 
             if (remaining <= 0f)
             {
-                string jobTitle = JobsConfig.TryGetValue(timer.jobId, out var completedJob)
-                    ? completedJob.jobTitle : timer.jobId;
-                int salary = timer.salary;
-                if (!_economy.AddMoney(salary, $"Зарплата: {jobTitle}"))
-                    return;
-
                 timer.isActive = false;
+                timer.isReadyToClaim = true;
                 OnWorkCompleted?.Invoke();
             }
         }

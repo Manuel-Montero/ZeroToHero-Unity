@@ -8,5 +8,7 @@ namespace ZeroToHero.Business
         public int stars;             // 0..3 звёзд
         public int collectCount;      // Сколько раз собрали доход
         public bool hasManager;       // Нанят ли менеджер (автосбор)
+        public int accumulatedIncome;
+        public long nextIncomeUtcTicks;
     }
 }
